@@ -2,26 +2,6 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from notion_wrapper import NotionWrapper
-import sys
-import subprocess
-import notion_client
-
-# Debug Info (Environment)
-with st.expander("Debug Info (Environment)", expanded=True):
-    st.write(f"Python version: {sys.version}")
-    try:
-        st.write(f"notion_client file: {notion_client.__file__}")
-        st.write(f"notion_client version: {notion_client.__version__}")
-    except AttributeError:
-        st.error("Could not access notion_client attributes.")
-    
-    # Run pip list
-    try:
-        result = subprocess.run(["pip", "list"], capture_output=True, text=True)
-        st.text("Pip list output:")
-        st.code(result.stdout)
-    except Exception as e:
-        st.error(f"Pip list failed: {e}")
 
 # ページ設定
 st.set_page_config(
