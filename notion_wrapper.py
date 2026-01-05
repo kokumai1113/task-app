@@ -22,7 +22,7 @@ class NotionWrapper:
         self.client = Client(auth=self.token)
 
     # 種目一覧DBのID (ハードコード)
-    EXERCISE_DB_ID = "2c9998b2-a518-8049-858f-c05be5b60c99"
+    EXERCISE_DB_ID = "2c9998b2a5188049858fc05be5b60c99"
 
     def add_workout(self, exercise_id: str, weight: float, reps: int, sets: int, date: datetime.date = None):
         """
@@ -120,7 +120,13 @@ class NotionWrapper:
             return exercises
 
         except Exception as e:
+            import notion_client
             st.error(f"Error fetching exercises: {e}. Make sure the integration is shared with the Exercise DB.")
+            st.warning(f"Debug Info: notion-client version: {notion_client.__version__}")
+            try:
+                st.write(f"Databases attributes: {dir(self.client.databases)}")
+            except Exception as debug_err:
+                st.write(f"Could not inspect databases object: {debug_err}")
             return []
 
     def get_workouts(self, page_size: int = 20):
