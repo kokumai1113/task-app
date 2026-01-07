@@ -123,7 +123,23 @@ class NotionWrapper:
                         return []
                         
                 except Exception as e_final:
-                    st.error(f"Error fetching projects: {e_final}. Check PROJECT_DB_ID and make sure the integration is invited to the page.")
+                    st.error(f"Error fetching projects: {e_final}. Check PROJECT_DB_ID.")
+                    
+                    # --- DEBUG SECTION ---
+                    st.write("--- DEBUG INFO ---")
+                    try:
+                        import notion_client
+                        st.write(f"notion_client module: {notion_client}")
+                        if hasattr(notion_client, "__version__"):
+                            st.write(f"Version: {notion_client.__version__}")
+                        else:
+                            st.write("Version: Not found")
+                        
+                        st.write(f"client.databases attributes: {dir(self.client.databases)}")
+                    except Exception as debug_e:
+                        st.write(f"Debug failed: {debug_e}")
+                    # ---------------------
+                    
                     return []
 
     def _parse_projects(self, response, title_key):
