@@ -81,35 +81,62 @@ class NotionWrapper:
         Returns:
             list: [{"id": page_id, "name": title}, ...]
         """
+        # 1. まず "名前" でのソートを試みる
         try:
             response = self.client.databases.query(
                 database_id=self.project_db_id,
-                sorts=[
-                    {
-                        "property": "名前", 
-                        "direction": "ascending"
-                    }
-                ]
+                sorts=[{"property": "名前", "direction": "ascending"}]
             )
-            
-            projects = []
-            for page in response["results"]:
-                page_id = page["id"]
-                props = page["properties"]
-                
-                # タイトル取得
-                title_prop = props.get("名前")
-                title_text = "Untitled"
-                if title_prop and "title" in title_prop and title_prop["title"]:
-                    title_text = title_prop["title"][0]["text"]["content"]
-                
-                projects.append({"id": page_id, "name": title_text})
-            
-            return projects
+            return self._parse_projects(response, "名前")
+        except Exception as e_name:
+            # "名前" プロパティが存在しない可能性があるため、次は "Name" で試す
+            try:
+                response = self.client.databases.query(
+                    database_id=self.project_db_id,
+                    sorts=[{"property": "Name", "direction": "ascending"}]
+                )
+                return self._parse_projects(response, "Name")
+            except Exception as e_name_eng:
+                # それでもダメならソートなしで取得し、プロパティ情報をデバッグ表示
+                try:
+                    st.warning(f"Sorting failed. Retrying without sort. Error: {e_name}, {e_name_eng}")
+                    response = self.client.databases.query(database_id=self.project_db_id)
+                    
+                    if response["results"]:
+                        # 最初のページのプロパティを表示してデバッグ支援
+                        sample_props = response["results"][0]["properties"]
+                        st.info(f"Available properties in Project DB: {list(sample_props.keys())}")
+                        
+                        # タイトルプロパティを探す ("title" typeのもの)
+                        title_key = next((k for k, v in sample_props.items() if v["id"] == "title"), None) 
+                        if not title_key:
+                            # id="title" がない場合、type="title" を探す
+                            title_key = next((k for k, v in sample_props.items() if v["type"] == "title"), "Name")
+                        
+                        return self._parse_projects(response, title_key)
+                    else:
+                        st.info("Project DB is empty or connection successful but no results.")
+                        return []
+                        
+                except Exception as e_final:
+                    st.error(f"Error fetching projects: {e_final}. Check PROJECT_DB_ID and make sure the integration is invited to the page.")
+                    return []
 
-        except Exception as e:
-            st.error(f"Error fetching projects: {e}. Check PROJECT_DB_ID.")
-            return []
+    def _parse_projects(self, response, title_key):
+        projects = []
+        for page in response["results"]:
+            page_id = page["id"]
+            props = page["properties"]
+            
+            # タイトル取得
+            title_prop = props.get(title_key)
+            title_text = "Untitled"
+            if title_prop and "title" in title_prop and title_prop["title"]:
+                title_text = title_prop["title"][0]["text"]["content"]
+            
+            projects.append({"id": page_id, "name": title_text})
+        
+        return projects
 
     def get_tasks(self, page_size: int = 20, project_map: dict = None):
         """
