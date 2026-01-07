@@ -63,10 +63,9 @@ class NotionWrapper:
     def _fetch_db_schema(self, database_id):
         """
         DBのスキーマ情報を取得し、プロパティ名（Date, Title, Relation）を特定します。
-        Returns:
-            dict: {"title": "Name", "date": "Date", "relation": "Project"} (defaults as fallback)
         """
-        schema = {"title": "名前", "date": "日付", "relation": "Project"}
+        # Screenshot defaults
+        schema = {"title": "名前", "date": "実施予定日", "relation": "プロジェクト"}
         
         # Requests fallback for robustness
         url = f"https://api.notion.com/v1/databases/{database_id}"
@@ -83,51 +82,23 @@ class NotionWrapper:
                 properties = data.get("properties", {})
                 
                 # Identify keys by type
-                for name, prop in properties.items():
-                    p_type = prop.get("type")
-                    if p_type == "title":
-                        schema["title"] = name
-                    elif p_type == "date":
-                        schema["date"] = name
-                    elif p_type == "relation":
-                        # Relation might be multiple, picking the first one found or matching "Project"
-                        # If we have multiple relations, we might need better logic, but assuming one for now
-                        # or prioritizing one named "Project" if exists.
-                        if schema["relation"] == "Project" and name != "Project":
-                            # If we haven't found "Project" yet, but found another relation, keep it as candidate
-                            # But if we already have a default "Project", we only overwrite if we find "Project" (logic is tricky)
-                            # Let's simple pick the *first* relation found if "Project" doesn't exist?
-                            # Or better: Just check properties.
-                            pass
-                        
-                        # Simplified logic: Update relation key if we find a relation property.
-                        # We prioritize "Project" if it exists, otherwise use any relation.
-                        if name == "Project" or schema["relation"] == "Project":
-                             schema["relation"] = name
-                        elif schema["relation"] != "Project":
-                             # Already found a candidate, keep it? No, let's just create a list of relations if needed.
-                             # For now, let's trust the default unless we find a relation.
-                             schema["relation"] = name
-                
-                # If specifically found properties, update schema
-                # Re-scan to be precise
                 titles = [k for k, v in properties.items() if v["type"] == "title"]
                 dates = [k for k, v in properties.items() if v["type"] == "date"]
                 relations = [k for k, v in properties.items() if v["type"] == "relation"]
                 
                 if titles: schema["title"] = titles[0]
                 if dates: schema["date"] = dates[0]
-                # Try to fuzzy match "Project" or take first
-                proj_rel = next((r for r in relations if "project" in r.lower()), None)
-                if proj_rel:
-                    schema["relation"] = proj_rel
-                elif relations:
-                    schema["relation"] = relations[0]
+                
+                # Check for "Project" or "プロジェクト" specifically in relations
+                # otherwise take the first relation found
+                if relations:
+                    target_rel = next((r for r in relations if r in ["プロジェクト", "Project", "project"]), relations[0])
+                    schema["relation"] = target_rel
                     
             else:
-                st.warning(f"Could not fetch DB schema (Status {response.status_code}). Using default property names.")
-        except Exception as e:
-            st.warning(f"Error determining DB schema: {e}")
+                pass # Fail silently and use defaults
+        except Exception:
+            pass # Fail silently and use defaults
             
         return schema
 
@@ -135,8 +106,6 @@ class NotionWrapper:
         """
         新しいタスクをNotionに追加します。
         """
-        # dateがNoneの場合は日付なしとして登録する
-        
         # DBスキーマから正しいプロパティ名を取得
         schema = self._fetch_db_schema(self.database_id)
         prop_title = schema["title"]
@@ -186,7 +155,6 @@ class NotionWrapper:
         """
         データベースクエリのラッパー。
         ライブラリのバージョンによって query メソッドがない場合のフォールバックを行います。
-        直接 requests を使用して堅牢性を高めます。
         """
         body = {"page_size": page_size}
         if sorts:
@@ -203,13 +171,10 @@ class NotionWrapper:
         url = f"https://api.notion.com/v1/databases/{database_id}/query"
         headers = {
             "Authorization": f"Bearer {self.token}",
-            "Notion-Version": "2022-06-28", # 安定板を指定
+            "Notion-Version": "2022-06-28",
             "Content-Type": "application/json"
         }
         
-        # DEBUG: URLパスを確認
-        # st.write(f"DEBUG: Requesting URL (Requests): '{url}'")
-
         response = requests.post(url, headers=headers, json=body)
         
         if response.status_code != 200:
@@ -220,16 +185,10 @@ class NotionWrapper:
     def get_projects(self):
         """
         プロジェクトDBからプロジェクト一覧を取得します。
-        
-        Returns:
-            list: [{"id": page_id, "name": title}, ...]
         """
         if not self.project_db_id:
             st.error("PROJECT_DB_ID is not set. Please check secrets.toml.")
             return []
-
-        # DEBUG: IDの前後の空白などを確認
-        # st.info(f"DEBUG: PROJECT_DB_ID = '{self.project_db_id}'")
 
         # 1. まず "名前" でのソートを試みる
         try:
@@ -238,7 +197,7 @@ class NotionWrapper:
                 sorts=[{"property": "名前", "direction": "ascending"}]
             )
             return self._parse_projects(response, "名前")
-        except Exception as e_name:
+        except Exception:
             # "名前" プロパティが存在しない可能性があるため、次は "Name" で試す
             try:
                 response = self._query_database(
@@ -246,27 +205,22 @@ class NotionWrapper:
                     sorts=[{"property": "Name", "direction": "ascending"}]
                 )
                 return self._parse_projects(response, "Name")
-            except Exception as e_name_eng:
+            except Exception:
                 # それでもダメならソートなしで取得
                 try:
-                    # st.warning(f"Sort failed ({e_name}, {e_name_eng}). Retrying without sort.")
                     response = self._query_database(
                         database_id=self.project_db_id
                     )
                     
                     if response["results"]:
-                        # 最初のページのプロパティを表示してデバッグ支援
+                        # 最初のページのプロパティからタイトルを探す
                         sample_props = response["results"][0]["properties"]
-                        # DEBUG: st.info(f"Available properties: {list(sample_props.keys())}")
-                        
-                        # タイトルプロパティを探す
                         title_key = next((k for k, v in sample_props.items() if v["id"] == "title"), None) 
                         if not title_key:
                             title_key = next((k for k, v in sample_props.items() if v["type"] == "title"), "Name")
                         
                         return self._parse_projects(response, title_key)
                     else:
-                        st.info("Project DB is empty.")
                         return []
                         
                 except Exception as e_final:
@@ -292,13 +246,6 @@ class NotionWrapper:
     def get_tasks(self, page_size: int = 20, project_map: dict = None):
         """
         タスク履歴を取得します。
-        
-        Args:
-            page_size (int): 取得数
-            project_map (dict): {project_id: project_name} のマッピング辞書。
-        
-        Returns:
-            pd.DataFrame: タスク履歴のデータフレーム
         """
         try:
             # DBスキーマから正しいプロパティ名を取得
@@ -357,5 +304,6 @@ class NotionWrapper:
             return df
 
         except Exception as e:
+            # st.error(f"Error fetching tasks: {e}") # UIがうるさくなるのでprint推奨だが、デバッグ中は便利
             print(f"Error fetching tasks: {e}")
             return pd.DataFrame()
