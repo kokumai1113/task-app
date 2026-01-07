@@ -74,6 +74,35 @@ class NotionWrapper:
             print(f"Error adding task: {e}")
             return False
 
+    def _query_database(self, database_id, sorts=None, page_size=100):
+        """
+        データベースクエリのラッパー。
+        ライブラリのバージョンによって query メソッドがない場合のフォールバックを行います。
+        """
+        body = {"page_size": page_size}
+        if sorts:
+            body["sorts"] = sorts
+
+        # 1. 標準の client.databases.query を試す
+        if hasattr(self.client.databases, "query"):
+            return self.client.databases.query(
+                database_id=database_id,
+                **body
+            )
+        
+        # 2. なければ client.request で直接APIを叩く (Fallback)
+        # Endpoint: POST https://api.notion.com/v1/databases/{database_id}/query
+        path = f"databases/{database_id}/query"
+        if hasattr(self.client, "request"):
+            return self.client.request(
+                path=path,
+                method="POST",
+                body=body
+            )
+        
+        # 3. どちらもダメならエラー
+        raise AttributeError("Notion client does not support database query.")
+
     def get_projects(self):
         """
         プロジェクトDBからプロジェクト一覧を取得します。
@@ -87,7 +116,7 @@ class NotionWrapper:
 
         # 1. まず "名前" でのソートを試みる
         try:
-            response = self.client.databases.query(
+            response = self._query_database(
                 database_id=self.project_db_id,
                 sorts=[{"property": "名前", "direction": "ascending"}]
             )
@@ -95,7 +124,7 @@ class NotionWrapper:
         except Exception as e_name:
             # "名前" プロパティが存在しない可能性があるため、次は "Name" で試す
             try:
-                response = self.client.databases.query(
+                response = self._query_database(
                     database_id=self.project_db_id,
                     sorts=[{"property": "Name", "direction": "ascending"}]
                 )
@@ -104,7 +133,7 @@ class NotionWrapper:
                 # それでもダメならソートなしで取得
                 try:
                     st.warning(f"Sort failed ({e_name}, {e_name_eng}). Retrying without sort.")
-                    response = self.client.databases.query(
+                    response = self._query_database(
                         database_id=self.project_db_id
                     )
                     
