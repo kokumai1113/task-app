@@ -115,7 +115,13 @@ class NotionWrapper:
                 if title_prop and "title" in title_prop and title_prop["title"]:
                     title_text = title_prop["title"][0]["text"]["content"]
                 
-                exercises.append({"id": page_id, "name": title_text})
+                # 分割 (Division) プロパティの取得
+                division_prop = props.get("分割")
+                division = "Others" # デフォルト
+                if division_prop and "multi_select" in division_prop and division_prop["multi_select"]:
+                    division = division_prop["multi_select"][0]["name"]
+
+                exercises.append({"id": page_id, "name": title_text, "division": division})
             
             return exercises
 

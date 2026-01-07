@@ -158,6 +158,7 @@ with tab2:
                      exercises = wrapper.get_exercises()
                      
                 id_to_name_map = {e["id"]: e["name"] for e in exercises}
+                name_to_division_map = {e["name"]: e.get("division", "Others") for e in exercises}
 
                 # 履歴取得 (Best Record計算のため多めに取得、あるいは全件取得が必要)
                 df = wrapper.get_workouts(page_size=100, exercise_map=id_to_name_map)
@@ -175,18 +176,26 @@ with tab2:
                     valid_df = valid_df.dropna(subset=["Weight"])
 
                     if not valid_df.empty:
+                        # Division列を追加
+                        valid_df["Division"] = valid_df["Exercise"].map(name_to_division_map).fillna("Others")
+
                         # 最大重量とその時のレップ数を取得
                         idx = valid_df.groupby("Exercise")["Weight"].idxmax()
-                        best_records = valid_df.loc[idx].sort_values(by="Weight", ascending=False)
+                        best_records = valid_df.loc[idx].sort_values(by=["Division", "Weight"], ascending=[True, False])
                         
-                        # カラムで並べて表示
-                        # 3列で表示していく
-                        cols = st.columns(3)
-                        for i, row in enumerate(best_records.itertuples()):
-                            col = cols[i % 3]
-                            col.metric(label=row.Exercise, value=f"{row.Weight} kg × {int(row.Reps)} reps")
+                        # Divisionごとにグループ化して表示
+                        divisions = best_records["Division"].unique()
                         
-                        st.divider() # 区切り線
+                        for division in divisions:
+                            st.subheader(division)
+                            division_records = best_records[best_records["Division"] == division]
+                            
+                            cols = st.columns(3)
+                            for i, row in enumerate(division_records.itertuples()):
+                                col = cols[i % 3]
+                                col.metric(label=row.Exercise, value=f"{row.Weight} kg × {int(row.Reps)} reps")
+                            
+                            st.divider() # Divisionごとの区切り
 
                     # --- 履歴テーブル ---
                     st.subheader("📜 Recent Logs")
