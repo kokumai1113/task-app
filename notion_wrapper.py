@@ -101,45 +101,30 @@ class NotionWrapper:
                 )
                 return self._parse_projects(response, "Name")
             except Exception as e_name_eng:
-                # それでもダメならソートなしで取得し、プロパティ情報をデバッグ表示
+                # それでもダメならソートなしで取得
                 try:
-                    st.warning(f"Sorting failed. Retrying without sort. Error: {e_name}, {e_name_eng}")
-                    response = self.client.databases.query(database_id=self.project_db_id)
+                    st.warning(f"Sort failed ({e_name}, {e_name_eng}). Retrying without sort.")
+                    response = self.client.databases.query(
+                        database_id=self.project_db_id
+                    )
                     
                     if response["results"]:
                         # 最初のページのプロパティを表示してデバッグ支援
                         sample_props = response["results"][0]["properties"]
-                        st.info(f"Available properties in Project DB: {list(sample_props.keys())}")
+                        # DEBUG: st.info(f"Available properties: {list(sample_props.keys())}")
                         
-                        # タイトルプロパティを探す ("title" typeのもの)
+                        # タイトルプロパティを探す
                         title_key = next((k for k, v in sample_props.items() if v["id"] == "title"), None) 
                         if not title_key:
-                            # id="title" がない場合、type="title" を探す
                             title_key = next((k for k, v in sample_props.items() if v["type"] == "title"), "Name")
                         
                         return self._parse_projects(response, title_key)
                     else:
-                        st.info("Project DB is empty or connection successful but no results.")
+                        st.info("Project DB is empty.")
                         return []
                         
                 except Exception as e_final:
-                    st.error(f"Error fetching projects: {e_final}. Check PROJECT_DB_ID.")
-                    
-                    # --- DEBUG SECTION ---
-                    st.write("--- DEBUG INFO ---")
-                    try:
-                        import notion_client
-                        st.write(f"notion_client module: {notion_client}")
-                        if hasattr(notion_client, "__version__"):
-                            st.write(f"Version: {notion_client.__version__}")
-                        else:
-                            st.write("Version: Not found")
-                        
-                        st.write(f"client.databases attributes: {dir(self.client.databases)}")
-                    except Exception as debug_e:
-                        st.write(f"Debug failed: {debug_e}")
-                    # ---------------------
-                    
+                    st.error(f"Error fetching projects: {e_final}")
                     return []
 
     def _parse_projects(self, response, title_key):
@@ -170,7 +155,7 @@ class NotionWrapper:
             pd.DataFrame: タスク履歴のデータフレーム
         """
         try:
-            response = self.client.databases.query(
+            response = self._query_database(
                 database_id=self.database_id,
                 page_size=page_size,
                 sorts=[
@@ -206,7 +191,6 @@ class NotionWrapper:
                     return "Unknown Project"
 
                 # データ抽出
-                # Task DB properties assumption: "名前" (Title), "日付" (Date), "Project" (Relation)
                 item = {
                     "Task": get_title(props.get("名前", {})),
                     "Date": get_date(props.get("日付", {})),
