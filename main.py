@@ -97,7 +97,7 @@ with tab1:
         
         # 名前とIDの辞書を作成
         project_dict = {p["name"]: p["id"] for p in projects}
-        project_names = list(project_dict.keys())
+        project_names = ["(No Project)"] + list(project_dict.keys())
     else:
         project_names = []
         project_dict = {}
@@ -105,7 +105,7 @@ with tab1:
     with st.form("task_form", clear_on_submit=True):
         name = st.text_input("Task Name", placeholder="Enter task name...")
         
-        is_date_enabled = st.checkbox("Set Date", value=True)
+        is_date_enabled = st.checkbox("Set Date", value=False)
         date = None
         if is_date_enabled:
             date = st.date_input("Date", datetime.now())
@@ -123,10 +123,8 @@ with tab1:
                 st.error("Notionに接続できません。")
             elif not name:
                 st.warning("タスク名を入力してください。")
-            elif not selected_project_name:
-                st.warning("プロジェクトを選択してください。")
             else:
-                project_id = project_dict[selected_project_name]
+                project_id = project_dict.get(selected_project_name)
                 with st.spinner("Saving to Notion..."):
                     success = wrapper.add_task(
                         name=name,

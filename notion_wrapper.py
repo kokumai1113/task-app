@@ -102,7 +102,7 @@ class NotionWrapper:
             
         return schema
 
-    def add_task(self, name: str, date: datetime.date, project_id: str):
+    def add_task(self, name: str, date: datetime.date = None, project_id: str = None):
         """
         新しいタスクをNotionに追加します。
         """
@@ -122,15 +122,18 @@ class NotionWrapper:
                         }
                     }
                 ]
-            },
-            prop_relation: {
+            }
+        }
+        
+        # プロジェクトがある場合のみ追加
+        if project_id:
+            properties[prop_relation] = {
                 "relation": [
                     {
                         "id": project_id
                     }
                 ]
             }
-        }
         
         # 日付がある場合のみプロパティに追加
         if date:
