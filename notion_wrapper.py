@@ -3,6 +3,8 @@ from datetime import datetime
 from notion_client import Client
 import pandas as pd
 import streamlit as st
+import requests
+import re # Added for _sanitize_id
 
 class NotionWrapper:
     def __init__(self):
@@ -21,9 +23,42 @@ class NotionWrapper:
             # 開発中はまだPROJECT_DB_IDが設定されていないかもしれないので、Warningにとどめるか、あるいは必須とするか。
             # 今回は必須として扱うが、ユーザーに設定を促すメッセージはMain側で出す。
             pass
+        else:
+            # IDのサニタイズ（URLがそのまま貼り付けられた場合などに対応）
+            self.database_id = self._sanitize_id(self.database_id)
+            self.project_db_id = self._sanitize_id(self.project_db_id)
 
         if self.token:
              self.client = Client(auth=self.token)
+
+    def _sanitize_id(self, id_str):
+        """
+        NotionのIDを抽出・整形します。
+        URLが渡された場合や、クエリパラメータがついている場合に対応します。
+        """
+        if not id_str:
+            return None
+        
+        # 1. クエリパラメータを除去 (?v=...)
+        id_str = id_str.split("?")[0]
+        
+        # 2. URLの場合、パスの最後を取得
+        if "/" in id_str:
+            id_str = id_str.split("/")[-1]
+
+        # 3. "名前-ID" の形式の場合、末尾の32文字(または36文字)を抽出したいが、
+        #    簡単な正規表現で 32文字のHEXを探す
+        # 32文字のHEX (ハイフンなし)
+        match = re.search(r'([a-f0-9]{32})', id_str)
+        if match:
+            return match.group(1)
+        
+        # UUID形式 (ハイフンあり)
+        match_uuid = re.search(r'([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})', id_str)
+        if match_uuid:
+            return match_uuid.group(1)
+
+        return id_str
 
     def add_task(self, name: str, date: datetime.date, project_id: str):
         """
@@ -78,6 +113,7 @@ class NotionWrapper:
         """
         データベースクエリのラッパー。
         ライブラリのバージョンによって query メソッドがない場合のフォールバックを行います。
+        直接 requests を使用して堅牢性を高めます。
         """
         body = {"page_size": page_size}
         if sorts:
@@ -90,22 +126,24 @@ class NotionWrapper:
                 **body
             )
         
-        # 2. なければ client.request で直接APIを叩く (Fallback)
-        # Endpoint: POST https://api.notion.com/v1/databases/{database_id}/query
-        path = f"databases/{database_id}/query"
+        # 2. 直接APIを叩く (Requests Fallback)
+        # これにより、ライブラリのバージョンや状態に依存せず実行可能
+        url = f"https://api.notion.com/v1/databases/{database_id}/query"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Notion-Version": "2022-06-28", # 安定板を指定
+            "Content-Type": "application/json"
+        }
         
         # DEBUG: URLパスを確認
-        st.write(f"DEBUG: Requesting path: '{path}' for DB ID: '{database_id}'")
+        st.write(f"DEBUG: Requesting URL (Requests): '{url}'")
+
+        response = requests.post(url, headers=headers, json=body)
         
-        if hasattr(self.client, "request"):
-            return self.client.request(
-                path=path,
-                method="POST",
-                body=body
-            )
-        
-        # 3. どちらもダメならエラー
-        raise AttributeError("Notion client does not support database query.")
+        if response.status_code != 200:
+            raise Exception(f"API Error {response.status_code}: {response.text}")
+            
+        return response.json()
 
     def get_projects(self):
         """
