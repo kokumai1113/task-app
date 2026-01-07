@@ -5,8 +5,8 @@ from notion_wrapper import NotionWrapper
 
 # ページ設定
 st.set_page_config(
-    page_title="Workout Tracker",
-    page_icon="💪",
+    page_title="Task App",
+    page_icon="✅",
     layout="centered",
     initial_sidebar_state="collapsed"
 )
@@ -46,24 +46,24 @@ def local_css():
         border-radius: 8px;
         height: 3rem;
         font-weight: 600;
-        background-image: linear-gradient(to right, #FF4B4B, #FF8F8F);
+        background-image: linear-gradient(to right, #00C6FF, #0072FF); /* Blue gradient */
         border: none; 
         color: white;
     }
     .stButton > button:hover {
-        background-image: linear-gradient(to right, #FF2B2B, #FF6F6F);
+        background-image: linear-gradient(to right, #00A6DF, #0052DF);
         border: none;
         color: white;
     }
 
     /* 入力フィールドのスタイル微調整 */
-    .stNumberInput, .stTextInput, .stDateInput {
+    .stTextInput, .stDateInput, .stSelectbox {
         margin-bottom: 0.5rem;
     }
     
     /* 履歴テーブルのヘッダー */
     th {
-        color: #FF4B4B !important;
+        color: #00C6FF !important;
     }
 
     </style>
@@ -72,70 +72,66 @@ def local_css():
 local_css()
 
 # タイトル
-st.title("💪 Workout Tracker")
+st.title("✅ Task App")
 
 # Notionクライアントの初期化
 try:
     wrapper = NotionWrapper()
     is_connected = True
 except Exception as e:
-    st.error("Notionとの連携設定が完了していません。Secretsを設定してください。")
+    st.error("Notionとの連携設定が完了していません。secrets.tomlに `NOTION_TOKEN`, `DATABASE_ID`, `PROJECT_DB_ID` を設定してください。")
     st.warning(f"Error: {e}")
     is_connected = False
 
 # タブの作成
-tab1, tab2 = st.tabs(["📝 Record", "📜 History"])
+tab1, tab2 = st.tabs(["📝 New Task", "📜 History"])
 
-# --- 記録タブ ---
+# --- タスク追加タブ ---
 with tab1:
-    st.header("New Workout")
+    st.header("Add New Task")
     
-    # 種目リストの取得
-    with st.spinner("Loading exercises..."):
-        exercises = wrapper.get_exercises()
-    
-    # 名前とIDの辞書を作成
-    exercise_dict = {e["name"]: e["id"] for e in exercises}
-    exercise_names = list(exercise_dict.keys())
-
-    with st.form("workout_form", clear_on_submit=True):
-        col1, col2 = st.columns(2)
-        with col1:
-            date = st.date_input("Date", datetime.now())
-        with col2:
-            if exercise_names:
-                selected_exercise_name = st.selectbox("Exercise", exercise_names)
-            else:
-                st.warning("No exercises found. Please check database connection.")
-                selected_exercise_name = None
+    # プロジェクトリストの取得
+    if is_connected:
+        with st.spinner("Loading projects..."):
+            projects = wrapper.get_projects()
         
-        col3, col4, col5 = st.columns(3)
-        with col3:
-            weight = st.number_input("Weight (kg)", min_value=0.0, step=2.5, format="%.1f")
-        with col4:
-            reps = st.number_input("Reps", min_value=0, step=1)
-        with col5:
-            sets = st.number_input("Sets", min_value=1, step=1, value=3)
+        # 名前とIDの辞書を作成
+        project_dict = {p["name"]: p["id"] for p in projects}
+        project_names = list(project_dict.keys())
+    else:
+        project_names = []
+        project_dict = {}
 
-        submitted = st.form_submit_button("Save Workout")
+    with st.form("task_form", clear_on_submit=True):
+        name = st.text_input("Task Name", placeholder="Enter task name...")
+        
+        date = st.date_input("Date", datetime.now())
+        
+        selected_project_name = None
+        if project_names:
+            selected_project_name = st.selectbox("Project", project_names)
+        elif is_connected:
+            st.warning("No projects found. Please check PROJECT_DB_ID.")
+        
+        submitted = st.form_submit_button("Save Task")
         
         if submitted:
             if not is_connected:
                 st.error("Notionに接続できません。")
-            elif not selected_exercise_name:
-                st.warning("種目を選択してください。")
+            elif not name:
+                st.warning("タスク名を入力してください。")
+            elif not selected_project_name:
+                st.warning("プロジェクトを選択してください。")
             else:
-                exercise_id = exercise_dict[selected_exercise_name]
+                project_id = project_dict[selected_project_name]
                 with st.spinner("Saving to Notion..."):
-                    success = wrapper.add_workout(
-                        exercise_id=exercise_id,
-                        weight=weight,
-                        reps=reps,
-                        sets=sets,
-                        date=date
+                    success = wrapper.add_task(
+                        name=name,
+                        date=date,
+                        project_id=project_id
                     )
                     if success:
-                        st.success(f"Saved: {selected_exercise_name} {weight}kg x {reps}reps")
+                        st.success(f"Saved: {name} ({selected_project_name})")
                     else:
                         st.error("保存に失敗しました。ログを確認してください。")
 
@@ -143,77 +139,32 @@ with tab1:
 with tab2:
     st.header("History")
     
-
-
     if is_connected:
         with st.spinner("Loading history..."):
-            # 種目名解決のためのマップ作成（ここでも取得）
-            # キャッシュなどを考慮するとトップレベルで取得したものを使い回すのが良いが、
-            # 簡易実装として再取得またはチェック
-            # exercise_dict (name -> id) から id -> name の辞書を作成
             try:
-                # exercises変数はRecordタブで定義されているが、タブ切り替え時も保持されるか確認が必要
+                # プロジェクト名解決のためのマップ作成
                 # もし未取得なら取得する
-                if 'exercises' not in locals():
-                     exercises = wrapper.get_exercises()
+                if 'projects' not in locals():
+                     projects = wrapper.get_projects()
                      
-                id_to_name_map = {e["id"]: e["name"] for e in exercises}
-                name_to_division_map = {e["name"]: e.get("division", "Others") for e in exercises}
+                id_to_name_map = {p["id"]: p["name"] for p in projects}
 
-                # 履歴取得 (Best Record計算のため多めに取得、あるいは全件取得が必要)
-                df = wrapper.get_workouts(page_size=100, exercise_map=id_to_name_map)
+                # 履歴取得
+                df = wrapper.get_tasks(page_size=20, project_map=id_to_name_map)
                 
                 if not df.empty:
-                    # --- Best Records の計算と表示 ---
-                    st.subheader("🏆 Personal Bests")
-                    
-                    # 練習種目ごとにグループ化して最大重量を取得
-                    # "Unknown" や "Linked" などを除外
-                    valid_df = df[df["Exercise"] != "Unknown"].copy()
-                    
-                    # Weightカラムを数値型に変換し、NaNを除去
-                    valid_df["Weight"] = pd.to_numeric(valid_df["Weight"], errors='coerce')
-                    valid_df = valid_df.dropna(subset=["Weight"])
-
-                    if not valid_df.empty:
-                        # Division列を追加
-                        valid_df["Division"] = valid_df["Exercise"].map(name_to_division_map).fillna("Others")
-
-                        # 最大重量とその時のレップ数を取得
-                        idx = valid_df.groupby("Exercise")["Weight"].idxmax()
-                        best_records = valid_df.loc[idx].sort_values(by=["Division", "Weight"], ascending=[True, False])
-                        
-                        # Divisionごとにグループ化して表示
-                        divisions = best_records["Division"].unique()
-                        
-                        for division in divisions:
-                            st.subheader(division)
-                            division_records = best_records[best_records["Division"] == division]
-                            
-                            cols = st.columns(3)
-                            for i, row in enumerate(division_records.itertuples()):
-                                col = cols[i % 3]
-                                col.metric(label=row.Exercise, value=f"{row.Weight} kg × {int(row.Reps)} reps")
-                            
-                            st.divider() # Divisionごとの区切り
-
-                    # --- 履歴テーブル ---
-                    st.subheader("📜 Recent Logs")
-
                     st.dataframe(
                         df,
                         column_config={
                             "Date": st.column_config.DateColumn("Date", format="MM/DD"),
-                            "Exercise": "Exercise",
-                            "Weight": st.column_config.NumberColumn("Kg", format="%.1f"),
-                            "Reps": "Reps",
-                            "Sets": "Sets",
+                            "Task": "Task Name",
+                            "Project": "Project",
                         },
                         use_container_width=True,
                         hide_index=True
                     )
                 else:
-                    st.info("No workout history found yet.")
+                    st.info("No tasks found yet.")
             except Exception as e:
                 st.error(f"Error loading history: {e}")
     else:
