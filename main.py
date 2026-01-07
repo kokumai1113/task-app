@@ -20,90 +20,50 @@ def local_css():
     
     html, body, [class*="css"]  {
         font-family: 'Inter', sans-serif;
-        color: #E0E0E0;
-    }
-    
-    /* 背景色 */
-    .stApp {
-        background-color: #121212;
     }
 
-    /* メインコンテナの余白調整 */
+    /* メインコンテナの余白調整（スマホ向け） */
     .block-container {
-        padding-top: 3rem;
-        padding-bottom: 3rem;
-        max_width: 700px;
+        padding-top: 2rem;
+        padding-bottom: 2rem;
+        padding-left: 1rem;
+        padding-right: 1rem;
     }
 
-    /* タイトルスタイル */
-    h1 {
-        font-weight: 700 !important;
-        color: #FFFFFF !important;
-        text-align: center;
-        margin-bottom: 2rem !important;
-        background: -webkit-linear-gradient(45deg, #00C6FF, #0072FF);
-        -webkit-background-clip: text;
-        -webkit-text-fill-color: transparent;
+    /* カード風デザインのコンテナクラス */
+    .stCard {
+        background-color: #262730;
+        padding: 1.5rem;
+        border-radius: 12px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        margin-bottom: 1rem;
+        border: 1px solid #41424C;
     }
 
-    h2, h3 {
-        color: #FFFFFF !important;
-        font-weight: 600 !important;
-    }
-
-    /* Input Fields */
-    .stTextInput input, .stDateInput input, .stSelectbox div[data-baseweb="select"] {
-        background-color: #1E1E1E !important;
-        color: #FFFFFF !important;
-        border: 1px solid #333333 !important;
-        border-radius: 10px !important;
-    }
-    
-    .stTextInput input:focus, .stDateInput input:focus, .stSelectbox div[data-baseweb="select"]:focus-within {
-        border-color: #0072FF !important;
-        box-shadow: 0 0 0 1px #0072FF !important;
-    }
-
-    /* Button Style */
+    /* ボタンのスタイル */
     .stButton > button {
         width: 100%;
-        border-radius: 10px;
-        height: 3.5rem;
-        font-weight: 700;
-        font-size: 1.1rem;
-        background: linear-gradient(135deg, #00C6FF 0%, #0072FF 100%);
+        border-radius: 8px;
+        height: 3rem;
+        font-weight: 600;
+        background-image: linear-gradient(to right, #00C6FF, #0072FF); /* Blue gradient */
+        border: none; 
+        color: white;
+    }
+    .stButton > button:hover {
+        background-image: linear-gradient(to right, #00A6DF, #0052DF);
         border: none;
         color: white;
-        transition: all 0.3s ease;
-        box-shadow: 0 4px 15px rgba(0, 114, 255, 0.3);
     }
 
-    .stButton > button:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 6px 20px rgba(0, 114, 255, 0.4);
-    }
-
-    .stButton > button:active {
-        transform: translateY(1px);
-    }
-
-    /* Card/Form Container */
-    [data-testid="stForm"] {
-        background-color: #1E1E1E;
-        padding: 2rem;
-        border-radius: 16px;
-        border: 1px solid #333333;
-        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    /* 入力フィールドのスタイル微調整 */
+    .stTextInput, .stDateInput, .stSelectbox {
+        margin-bottom: 0.5rem;
     }
     
-    /* Checkbox */
-    .stCheckbox label {
-        color: #B0B0B0 !important;
-    }
-
-    /* Notifications */
-    .stAlert {
-        border-radius: 10px;
+    /* 履歴テーブルのヘッダー */
+    th {
+        color: #00C6FF !important;
     }
 
     </style>
@@ -123,59 +83,91 @@ except Exception as e:
     st.warning(f"Error: {e}")
     is_connected = False
 
-# メインフォーム (Historyタブは削除済み)
-# プロジェクトリストの取得
-if is_connected:
-    with st.spinner("Loading projects..."):
-        projects = wrapper.get_projects()
-    
-    # 名前とIDの辞書を作成
-    project_dict = {p["name"]: p["id"] for p in projects}
-    project_names = ["(No Project)"] + list(project_dict.keys())
-else:
-    project_names = []
-    project_dict = {}
+# タブの作成
+tab1, tab2 = st.tabs(["📝 New Task", "📜 History"])
 
-# フォームエリア
-with st.form("task_form", clear_on_submit=True):
-    st.subheader("New Task")
+# --- タスク追加タブ ---
+with tab1:
+    st.header("Add New Task")
     
-    name = st.text_input("Task Name", placeholder="What gets done today?")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        is_date_enabled = st.checkbox("Set Date", value=False)
+    # プロジェクトリストの取得
+    if is_connected:
+        with st.spinner("Loading projects..."):
+            projects = wrapper.get_projects()
+        
+        # 名前とIDの辞書を作成
+        project_dict = {p["name"]: p["id"] for p in projects}
+        project_names = ["(No Project)"] + list(project_dict.keys())
+    else:
+        project_names = []
+        project_dict = {}
+
+    is_date_enabled = st.checkbox("Set Date", value=False)
+
+    with st.form("task_form", clear_on_submit=True):
+        name = st.text_input("Task Name", placeholder="Enter task name...")
+        
         date = None
         if is_date_enabled:
-            date = st.date_input("Date", datetime.now(), label_visibility="collapsed")
-    
-    with col2:
+            date = st.date_input("Date", datetime.now())
+        
         selected_project_name = None
         if project_names:
-            selected_project_name = st.selectbox("Project", project_names, label_visibility="collapsed")
+            selected_project_name = st.selectbox("Project", project_names)
         elif is_connected:
-            st.caption("No projects found.")
+            st.warning("No projects found. Please check PROJECT_DB_ID.")
+        
+        submitted = st.form_submit_button("Save Task")
+        
+        if submitted:
+            if not is_connected:
+                st.error("Notionに接続できません。")
+            elif not name:
+                st.warning("タスク名を入力してください。")
+            else:
+                project_id = project_dict.get(selected_project_name)
+                with st.spinner("Saving to Notion..."):
+                    success = wrapper.add_task(
+                        name=name,
+                        date=date,
+                        project_id=project_id
+                    )
+                    if success:
+                        st.success(f"Saved: {name} ({selected_project_name})")
+                    else:
+                        st.error("保存に失敗しました。ログを確認してください。")
+
+# --- 履歴タブ ---
+with tab2:
+    st.header("History")
     
-    # スペースを空ける
-    st.write("")
-    
-    submitted = st.form_submit_button("Save Task")
-    
-    if submitted:
-        if not is_connected:
-            st.error("Notionに接続できません。")
-        elif not name:
-            st.warning("タスク名を入力してください。")
-        else:
-            project_id = project_dict.get(selected_project_name)
-            with st.spinner("Saving to Notion..."):
-                success = wrapper.add_task(
-                    name=name,
-                    date=date,
-                    project_id=project_id
-                )
-                if success:
-                    st.success(f"Successfully added: **{name}**")
+    if is_connected:
+        with st.spinner("Loading history..."):
+            try:
+                # プロジェクト名解決のためのマップ作成
+                # もし未取得なら取得する
+                if 'projects' not in locals():
+                     projects = wrapper.get_projects()
+                     
+                id_to_name_map = {p["id"]: p["name"] for p in projects}
+
+                # 履歴取得
+                df = wrapper.get_tasks(page_size=20, project_map=id_to_name_map)
+                
+                if not df.empty:
+                    st.dataframe(
+                        df,
+                        column_config={
+                            "Date": st.column_config.DateColumn("Date", format="MM/DD"),
+                            "Task": "Task Name",
+                            "Project": "Project",
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
                 else:
-                    st.error("保存に失敗しました。ログを確認してください。")
+                    st.info("No tasks found yet.")
+            except Exception as e:
+                st.error(f"Error loading history: {e}")
+    else:
+        st.info("Please configure Notion credentials to see history.")
