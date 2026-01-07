@@ -102,10 +102,11 @@ with tab1:
         project_names = []
         project_dict = {}
 
+    is_date_enabled = st.checkbox("Set Date", value=False)
+
     with st.form("task_form", clear_on_submit=True):
         name = st.text_input("Task Name", placeholder="Enter task name...")
         
-        is_date_enabled = st.checkbox("Set Date", value=False)
         date = None
         if is_date_enabled:
             date = st.date_input("Date", datetime.now())
