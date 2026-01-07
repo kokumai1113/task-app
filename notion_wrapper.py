@@ -81,6 +81,10 @@ class NotionWrapper:
         Returns:
             list: [{"id": page_id, "name": title}, ...]
         """
+        if not self.project_db_id:
+            st.error("PROJECT_DB_ID is not set. Please check secrets.toml.")
+            return []
+
         # 1. まず "名前" でのソートを試みる
         try:
             response = self.client.databases.query(
