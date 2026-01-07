@@ -142,31 +142,68 @@ with tab1:
 # --- 履歴タブ ---
 with tab2:
     st.header("History")
-    if st.button("🔄 Refresh"):
-        st.cache_data.clear() # データを再取得するためにキャッシュクリア（簡易的）
+    
+    # Refreshボタンのスタイル改善
+    col_refresh, _ = st.columns([1, 6])
+    with col_refresh:
+        if st.button("🔄 Refresh"):
+            st.cache_data.clear()
+            st.rerun()
 
     if is_connected:
         with st.spinner("Loading history..."):
-            df = wrapper.get_workouts(page_size=20)
-            
-            if not df.empty:
-                # データフレームの表示などを調整
-                # スマホで見やすいように、重要な列を左に、あるいはカード形式で表示など
+            # 種目名解決のためのマップ作成（ここでも取得）
+            # キャッシュなどを考慮するとトップレベルで取得したものを使い回すのが良いが、
+            # 簡易実装として再取得またはチェック
+            # exercise_dict (name -> id) から id -> name の辞書を作成
+            try:
+                # exercises変数はRecordタブで定義されているが、タブ切り替え時も保持されるか確認が必要
+                # もし未取得なら取得する
+                if 'exercises' not in locals():
+                     exercises = wrapper.get_exercises()
+                     
+                id_to_name_map = {e["id"]: e["name"] for e in exercises}
+
+                # 履歴取得 (Best Record計算のため多めに取得、あるいは全件取得が必要)
+                df = wrapper.get_workouts(page_size=100, exercise_map=id_to_name_map)
                 
-                # スタイリングされたデータフレーム
-                st.dataframe(
-                    df,
-                    column_config={
-                        "Date": st.column_config.DateColumn("Date", format="MM/DD"),
-                        "Exercise": "Exercise",
-                        "Weight": st.column_config.NumberColumn("Kg", format="%.1f"),
-                        "Reps": "Reps",
-                        "Sets": "Sets",
-                    },
-                    use_container_width=True,
-                    hide_index=True
-                )
-            else:
-                st.info("No workout history found yet.")
+                if not df.empty:
+                    # --- Best Records の計算と表示 ---
+                    st.subheader("🏆 Personal Bests")
+                    
+                    # 練習種目ごとにグループ化して最大重量を取得
+                    # "Unknown" や "Linked" などを除外
+                    valid_df = df[df["Exercise"] != "Unknown"]
+                    if not valid_df.empty:
+                        best_records = valid_df.groupby("Exercise")["Weight"].max().sort_values(ascending=False)
+                        
+                        # カラムで並べて表示
+                        # 3列で表示していく
+                        cols = st.columns(3)
+                        for i, (exercise_name, max_weight) in enumerate(best_records.items()):
+                            col = cols[i % 3]
+                            col.metric(label=exercise_name, value=f"{max_weight} kg")
+                        
+                        st.divider() # 区切り線
+
+                    # --- 履歴テーブル ---
+                    st.subheader("📜 Recent Logs")
+
+                    st.dataframe(
+                        df,
+                        column_config={
+                            "Date": st.column_config.DateColumn("Date", format="MM/DD"),
+                            "Exercise": "Exercise",
+                            "Weight": st.column_config.NumberColumn("Kg", format="%.1f"),
+                            "Reps": "Reps",
+                            "Sets": "Sets",
+                        },
+                        use_container_width=True,
+                        hide_index=True
+                    )
+                else:
+                    st.info("No workout history found yet.")
+            except Exception as e:
+                st.error(f"Error loading history: {e}")
     else:
         st.info("Please configure Notion credentials to see history.")

@@ -129,10 +129,14 @@ class NotionWrapper:
                 st.write(f"Could not inspect databases object: {debug_err}")
             return []
 
-    def get_workouts(self, page_size: int = 20):
+    def get_workouts(self, page_size: int = 20, exercise_map: dict = None):
         """
         過去のトレーニング記録を取得します。
         
+        Args:
+            page_size (int): 取得数
+            exercise_map (dict): {exercise_id: exercise_name} のマッピング辞書。もし渡されればRelation IDを名前に変換します。
+
         Returns:
             pd.DataFrame: トレーニング履歴のデータフレーム
         """
@@ -165,18 +169,20 @@ class NotionWrapper:
                     return res.get("start") if res else ""
                 
                 def get_relation_name(prop):
-                    # Relationの場合、ページIDしか取れないため、表示には工夫が必要。
-                    # 通常はRollupを使うか、別途fetchが必要だが、
-                    # ここでは簡単のため「Linked Exercise」などのプレースホルダーか、
-                    # 可能ならページタイトルを取得する（N+1問題になるので注意）。
-                    # 今回は既存のコードとの互換性のため「-」にしておくか、
-                    # 名前カラム（今は空）の代わりに何を表示するか要検討。
-                    # ひとまず「View in Notion」とするか空文字。
-                    return "Linked"
+                    # RelationプロパティからIDを取得
+                    relation_list = prop.get("relation", [])
+                    if not relation_list:
+                        return "Unknown"
+                    
+                    ex_id = relation_list[0]["id"]
+                    
+                    if exercise_map and ex_id in exercise_map:
+                        return exercise_map[ex_id]
+                    return "Unknown"
 
                 # データ抽出
                 item = {
-                    "Exercise": get_title(props.get("名前", {})), # 名前カラムは空になる予定だが...
+                    "Exercise": get_relation_name(props.get("workout list", {})),
                     "Date": get_date(props.get("日付", {})),
                     "Weight": get_number(props.get("重量 kg", {})),
                     "Reps": get_number(props.get("reps", {})),
