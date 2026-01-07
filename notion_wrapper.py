@@ -93,6 +93,10 @@ class NotionWrapper:
         # 2. なければ client.request で直接APIを叩く (Fallback)
         # Endpoint: POST https://api.notion.com/v1/databases/{database_id}/query
         path = f"databases/{database_id}/query"
+        
+        # DEBUG: URLパスを確認
+        st.write(f"DEBUG: Requesting path: '{path}' for DB ID: '{database_id}'")
+        
         if hasattr(self.client, "request"):
             return self.client.request(
                 path=path,
@@ -113,6 +117,9 @@ class NotionWrapper:
         if not self.project_db_id:
             st.error("PROJECT_DB_ID is not set. Please check secrets.toml.")
             return []
+
+        # DEBUG: IDの前後の空白などを確認
+        st.info(f"DEBUG: PROJECT_DB_ID = '{self.project_db_id}'")
 
         # 1. まず "名前" でのソートを試みる
         try:
