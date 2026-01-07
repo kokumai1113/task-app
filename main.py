@@ -168,7 +168,12 @@ with tab2:
                     
                     # 練習種目ごとにグループ化して最大重量を取得
                     # "Unknown" や "Linked" などを除外
-                    valid_df = df[df["Exercise"] != "Unknown"]
+                    valid_df = df[df["Exercise"] != "Unknown"].copy()
+                    
+                    # Weightカラムを数値型に変換し、NaNを除去
+                    valid_df["Weight"] = pd.to_numeric(valid_df["Weight"], errors='coerce')
+                    valid_df = valid_df.dropna(subset=["Weight"])
+
                     if not valid_df.empty:
                         # 最大重量とその時のレップ数を取得
                         idx = valid_df.groupby("Exercise")["Weight"].idxmax()

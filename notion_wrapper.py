@@ -162,7 +162,8 @@ class NotionWrapper:
                     return res[0]["text"]["content"] if res else ""
                 
                 def get_number(prop):
-                    return prop.get("number", 0)
+                    val = prop.get("number")
+                    return val if val is not None else 0
 
                 def get_date(prop):
                     res = prop.get("date", {})
