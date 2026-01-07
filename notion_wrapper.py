@@ -116,7 +116,7 @@ class NotionWrapper:
                     title_text = title_prop["title"][0]["text"]["content"]
                 
                 # 分割 (Division) プロパティの取得
-                division_prop = props.get("分割")
+                division_prop = props.get("分割(push重複なし)")
                 division = "Others" # デフォルト
                 if division_prop and "multi_select" in division_prop and division_prop["multi_select"]:
                     division = division_prop["multi_select"][0]["name"]
