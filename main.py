@@ -143,12 +143,7 @@ with tab1:
 with tab2:
     st.header("History")
     
-    # Refreshボタンのスタイル改善
-    col_refresh, _ = st.columns([1, 6])
-    with col_refresh:
-        if st.button("🔄 Refresh"):
-            st.cache_data.clear()
-            st.rerun()
+
 
     if is_connected:
         with st.spinner("Loading history..."):
@@ -175,14 +170,16 @@ with tab2:
                     # "Unknown" や "Linked" などを除外
                     valid_df = df[df["Exercise"] != "Unknown"]
                     if not valid_df.empty:
-                        best_records = valid_df.groupby("Exercise")["Weight"].max().sort_values(ascending=False)
+                        # 最大重量とその時のレップ数を取得
+                        idx = valid_df.groupby("Exercise")["Weight"].idxmax()
+                        best_records = valid_df.loc[idx].sort_values(by="Weight", ascending=False)
                         
                         # カラムで並べて表示
                         # 3列で表示していく
                         cols = st.columns(3)
-                        for i, (exercise_name, max_weight) in enumerate(best_records.items()):
+                        for i, row in enumerate(best_records.itertuples()):
                             col = cols[i % 3]
-                            col.metric(label=exercise_name, value=f"{max_weight} kg")
+                            col.metric(label=row.Exercise, value=f"{row.Weight} kg × {int(row.Reps)} reps")
                         
                         st.divider() # 区切り線
 
