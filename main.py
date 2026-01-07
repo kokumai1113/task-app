@@ -83,91 +83,52 @@ except Exception as e:
     st.warning(f"Error: {e}")
     is_connected = False
 
-# タブの作成
-tab1, tab2 = st.tabs(["📝 New Task", "📜 History"])
+# --- タスク追加 ---
+st.header("Add New Task")
 
-# --- タスク追加タブ ---
-with tab1:
-    st.header("Add New Task")
+# プロジェクトリストの取得
+if is_connected:
+    with st.spinner("Loading projects..."):
+        projects = wrapper.get_projects()
     
-    # プロジェクトリストの取得
-    if is_connected:
-        with st.spinner("Loading projects..."):
-            projects = wrapper.get_projects()
-        
-        # 名前とIDの辞書を作成
-        project_dict = {p["name"]: p["id"] for p in projects}
-        project_names = ["(No Project)"] + list(project_dict.keys())
-    else:
-        project_names = []
-        project_dict = {}
+    # 名前とIDの辞書を作成
+    project_dict = {p["name"]: p["id"] for p in projects}
+    project_names = ["(No Project)"] + list(project_dict.keys())
+else:
+    project_names = []
+    project_dict = {}
 
-    is_date_enabled = st.checkbox("Set Date", value=False)
+is_date_enabled = st.checkbox("Set Date", value=False)
 
-    with st.form("task_form", clear_on_submit=True):
-        name = st.text_input("Task Name", placeholder="Enter task name...")
-        
-        date = None
-        if is_date_enabled:
-            date = st.date_input("Date", datetime.now())
-        
-        selected_project_name = None
-        if project_names:
-            selected_project_name = st.selectbox("Project", project_names)
-        elif is_connected:
-            st.warning("No projects found. Please check PROJECT_DB_ID.")
-        
-        submitted = st.form_submit_button("Save Task")
-        
-        if submitted:
-            if not is_connected:
-                st.error("Notionに接続できません。")
-            elif not name:
-                st.warning("タスク名を入力してください。")
-            else:
-                project_id = project_dict.get(selected_project_name)
-                with st.spinner("Saving to Notion..."):
-                    success = wrapper.add_task(
-                        name=name,
-                        date=date,
-                        project_id=project_id
-                    )
-                    if success:
-                        st.success(f"Saved: {name} ({selected_project_name})")
-                    else:
-                        st.error("保存に失敗しました。ログを確認してください。")
-
-# --- 履歴タブ ---
-with tab2:
-    st.header("History")
+with st.form("task_form", clear_on_submit=True):
+    name = st.text_input("Task Name", placeholder="Enter task name...")
     
-    if is_connected:
-        with st.spinner("Loading history..."):
-            try:
-                # プロジェクト名解決のためのマップ作成
-                # もし未取得なら取得する
-                if 'projects' not in locals():
-                     projects = wrapper.get_projects()
-                     
-                id_to_name_map = {p["id"]: p["name"] for p in projects}
-
-                # 履歴取得
-                df = wrapper.get_tasks(page_size=20, project_map=id_to_name_map)
-                
-                if not df.empty:
-                    st.dataframe(
-                        df,
-                        column_config={
-                            "Date": st.column_config.DateColumn("Date", format="MM/DD"),
-                            "Task": "Task Name",
-                            "Project": "Project",
-                        },
-                        use_container_width=True,
-                        hide_index=True
-                    )
+    date = None
+    if is_date_enabled:
+        date = st.date_input("Date", datetime.now())
+    
+    selected_project_name = None
+    if project_names:
+        selected_project_name = st.selectbox("Project", project_names)
+    elif is_connected:
+        st.warning("No projects found. Please check PROJECT_DB_ID.")
+    
+    submitted = st.form_submit_button("Save Task")
+    
+    if submitted:
+        if not is_connected:
+            st.error("Notionに接続できません。")
+        elif not name:
+            st.warning("タスク名を入力してください。")
+        else:
+            project_id = project_dict.get(selected_project_name)
+            with st.spinner("Saving to Notion..."):
+                success = wrapper.add_task(
+                    name=name,
+                    date=date,
+                    project_id=project_id
+                )
+                if success:
+                    st.success(f"Saved: {name} ({selected_project_name})")
                 else:
-                    st.info("No tasks found yet.")
-            except Exception as e:
-                st.error(f"Error loading history: {e}")
-    else:
-        st.info("Please configure Notion credentials to see history.")
+                    st.error("保存に失敗しました。ログを確認してください。")
