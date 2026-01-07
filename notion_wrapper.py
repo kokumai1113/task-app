@@ -135,10 +135,7 @@ class NotionWrapper:
         """
         新しいタスクをNotionに追加します。
         """
-        if date is None:
-            date = datetime.now().date()
-        
-        date_iso = date.isoformat()
+        # dateがNoneの場合は日付なしとして登録する
         
         # DBスキーマから正しいプロパティ名を取得
         schema = self._fetch_db_schema(self.database_id)
@@ -157,11 +154,6 @@ class NotionWrapper:
                     }
                 ]
             },
-            prop_date: {
-                "date": {
-                    "start": date_iso
-                }
-            },
             prop_relation: {
                 "relation": [
                     {
@@ -170,6 +162,15 @@ class NotionWrapper:
                 ]
             }
         }
+        
+        # 日付がある場合のみプロパティに追加
+        if date:
+            date_iso = date.isoformat()
+            properties[prop_date] = {
+                "date": {
+                    "start": date_iso
+                }
+            }
 
         try:
             self.client.pages.create(

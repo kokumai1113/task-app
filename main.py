@@ -105,7 +105,10 @@ with tab1:
     with st.form("task_form", clear_on_submit=True):
         name = st.text_input("Task Name", placeholder="Enter task name...")
         
-        date = st.date_input("Date", datetime.now())
+        is_date_enabled = st.checkbox("Set Date", value=True)
+        date = None
+        if is_date_enabled:
+            date = st.date_input("Date", datetime.now())
         
         selected_project_name = None
         if project_names:
