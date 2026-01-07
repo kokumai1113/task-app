@@ -60,23 +60,95 @@ class NotionWrapper:
 
         return id_str
 
+    def _fetch_db_schema(self, database_id):
+        """
+        DBのスキーマ情報を取得し、プロパティ名（Date, Title, Relation）を特定します。
+        Returns:
+            dict: {"title": "Name", "date": "Date", "relation": "Project"} (defaults as fallback)
+        """
+        schema = {"title": "名前", "date": "日付", "relation": "Project"}
+        
+        # Requests fallback for robustness
+        url = f"https://api.notion.com/v1/databases/{database_id}"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            response = requests.get(url, headers=headers)
+            if response.status_code == 200:
+                data = response.json()
+                properties = data.get("properties", {})
+                
+                # Identify keys by type
+                for name, prop in properties.items():
+                    p_type = prop.get("type")
+                    if p_type == "title":
+                        schema["title"] = name
+                    elif p_type == "date":
+                        schema["date"] = name
+                    elif p_type == "relation":
+                        # Relation might be multiple, picking the first one found or matching "Project"
+                        # If we have multiple relations, we might need better logic, but assuming one for now
+                        # or prioritizing one named "Project" if exists.
+                        if schema["relation"] == "Project" and name != "Project":
+                            # If we haven't found "Project" yet, but found another relation, keep it as candidate
+                            # But if we already have a default "Project", we only overwrite if we find "Project" (logic is tricky)
+                            # Let's simple pick the *first* relation found if "Project" doesn't exist?
+                            # Or better: Just check properties.
+                            pass
+                        
+                        # Simplified logic: Update relation key if we find a relation property.
+                        # We prioritize "Project" if it exists, otherwise use any relation.
+                        if name == "Project" or schema["relation"] == "Project":
+                             schema["relation"] = name
+                        elif schema["relation"] != "Project":
+                             # Already found a candidate, keep it? No, let's just create a list of relations if needed.
+                             # For now, let's trust the default unless we find a relation.
+                             schema["relation"] = name
+                
+                # If specifically found properties, update schema
+                # Re-scan to be precise
+                titles = [k for k, v in properties.items() if v["type"] == "title"]
+                dates = [k for k, v in properties.items() if v["type"] == "date"]
+                relations = [k for k, v in properties.items() if v["type"] == "relation"]
+                
+                if titles: schema["title"] = titles[0]
+                if dates: schema["date"] = dates[0]
+                # Try to fuzzy match "Project" or take first
+                proj_rel = next((r for r in relations if "project" in r.lower()), None)
+                if proj_rel:
+                    schema["relation"] = proj_rel
+                elif relations:
+                    schema["relation"] = relations[0]
+                    
+            else:
+                st.warning(f"Could not fetch DB schema (Status {response.status_code}). Using default property names.")
+        except Exception as e:
+            st.warning(f"Error determining DB schema: {e}")
+            
+        return schema
+
     def add_task(self, name: str, date: datetime.date, project_id: str):
         """
         新しいタスクをNotionに追加します。
-        
-        Args:
-            name (str): タスク名
-            date (datetime.date): 実施予定日
-            project_id (str): プロジェクトページのID (Relation用)
         """
         if date is None:
             date = datetime.now().date()
         
         date_iso = date.isoformat()
+        
+        # DBスキーマから正しいプロパティ名を取得
+        schema = self._fetch_db_schema(self.database_id)
+        prop_title = schema["title"]
+        prop_date = schema["date"]
+        prop_relation = schema["relation"]
 
         # プロパティの構築
         properties = {
-            "名前": {
+            prop_title: {
                 "title": [
                     {
                         "text": {
@@ -85,12 +157,12 @@ class NotionWrapper:
                     }
                 ]
             },
-            "日付": {
+            prop_date: {
                 "date": {
                     "start": date_iso
                 }
             },
-            "Project": { # Relation property name expected to be "Project" or check user env
+            prop_relation: {
                 "relation": [
                     {
                         "id": project_id
@@ -106,7 +178,7 @@ class NotionWrapper:
             )
             return True
         except Exception as e:
-            print(f"Error adding task: {e}")
+            st.error(f"Error adding task: {e}")
             return False
 
     def _query_database(self, database_id, sorts=None, page_size=100):
@@ -127,7 +199,6 @@ class NotionWrapper:
             )
         
         # 2. 直接APIを叩く (Requests Fallback)
-        # これにより、ライブラリのバージョンや状態に依存せず実行可能
         url = f"https://api.notion.com/v1/databases/{database_id}/query"
         headers = {
             "Authorization": f"Bearer {self.token}",
@@ -136,7 +207,7 @@ class NotionWrapper:
         }
         
         # DEBUG: URLパスを確認
-        st.write(f"DEBUG: Requesting URL (Requests): '{url}'")
+        # st.write(f"DEBUG: Requesting URL (Requests): '{url}'")
 
         response = requests.post(url, headers=headers, json=body)
         
@@ -157,7 +228,7 @@ class NotionWrapper:
             return []
 
         # DEBUG: IDの前後の空白などを確認
-        st.info(f"DEBUG: PROJECT_DB_ID = '{self.project_db_id}'")
+        # st.info(f"DEBUG: PROJECT_DB_ID = '{self.project_db_id}'")
 
         # 1. まず "名前" でのソートを試みる
         try:
@@ -177,7 +248,7 @@ class NotionWrapper:
             except Exception as e_name_eng:
                 # それでもダメならソートなしで取得
                 try:
-                    st.warning(f"Sort failed ({e_name}, {e_name_eng}). Retrying without sort.")
+                    # st.warning(f"Sort failed ({e_name}, {e_name_eng}). Retrying without sort.")
                     response = self._query_database(
                         database_id=self.project_db_id
                     )
@@ -229,12 +300,18 @@ class NotionWrapper:
             pd.DataFrame: タスク履歴のデータフレーム
         """
         try:
+            # DBスキーマから正しいプロパティ名を取得
+            schema = self._fetch_db_schema(self.database_id)
+            prop_title = schema["title"]
+            prop_date = schema["date"]
+            prop_relation = schema["relation"]
+
             response = self._query_database(
                 database_id=self.database_id,
                 page_size=page_size,
                 sorts=[
                     {
-                        "property": "日付",
+                        "property": prop_date,
                         "direction": "descending"
                     }
                 ]
@@ -266,9 +343,9 @@ class NotionWrapper:
 
                 # データ抽出
                 item = {
-                    "Task": get_title(props.get("名前", {})),
-                    "Date": get_date(props.get("日付", {})),
-                    "Project": get_relation_name(props.get("Project", {}))
+                    "Task": get_title(props.get(prop_title, {})),
+                    "Date": get_date(props.get(prop_date, {})),
+                    "Project": get_relation_name(props.get(prop_relation, {}))
                 }
                 data.append(item)
             
