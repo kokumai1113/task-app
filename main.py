@@ -211,16 +211,14 @@ with tab2:
                 target_tasks["sort_key"] = target_tasks.apply(sort_key, axis=1)
                 target_tasks = target_tasks.sort_values(by=["sort_key", "Date"])
                 
-                st.write(f"Incomplete tasks for today: {len(target_tasks)}")
-                
                 # Display tasks
                 for index, row in target_tasks.iterrows():
                     # レイアウト: タスク名 (左) - ステータス (右)
                     c1, c2 = st.columns([0.7, 0.3])
                     
                     with c1:
-                        # シンプルなテキスト表示。プロジェクト名は残すが控えめに。
-                        st.write(f"**{row['Task']}**")
+                        # タスク名を大きく表示
+                        st.markdown(f"##### {row['Task']}")
                         if row['Project'] != "-":
                             st.caption(f"📂 {row['Project']}")
                     
