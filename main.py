@@ -215,20 +215,21 @@ with tab2:
                 
                 # Display tasks
                 for index, row in target_tasks.iterrows():
-                    with st.container():
-                        st.markdown(f"""
-                        <div class="stCard">
-                            <div class="task-title">{row['Task']}</div>
-                            <div class="task-meta">📅 {row['Date']} | 📂 {row['Project']}</div>
-                        </div>
-                        """, unsafe_allow_html=True)
-                        
+                    # レイアウト: タスク名 (左) - ステータス (右)
+                    c1, c2 = st.columns([0.7, 0.3])
+                    
+                    with c1:
+                        # シンプルなテキスト表示。プロジェクト名は残すが控えめに。
+                        st.write(f"**{row['Task']}**")
+                        if row['Project'] != "-":
+                            st.caption(f"📂 {row['Project']}")
+                    
+                    with c2:
                         # Status Updater
                         current_status = row['Status']
                         
-                        # Dynamic options based on current status to ensure it's in the list
+                        # Dynamic options based on current status
                         options = [current_status] 
-                        # Add common options if not present
                         for s in ["未着手", "進行中", "完了"]:
                             if s not in options:
                                 options.append(s)
@@ -243,13 +244,13 @@ with tab2:
                         )
                         
                         if new_status != current_status:
-                            with st.spinner("Updating status..."):
+                            with st.spinner("Updating..."):
                                 if wrapper.update_task_status(row['id'], new_status):
                                     st.success("Updated!")
                                     st.rerun()
                                 else:
                                     st.error("Failed to update.")
-                        
-                        st.divider()
+                    
+                    st.divider()
             else:
                 st.info("No tasks for today! 🎉")
