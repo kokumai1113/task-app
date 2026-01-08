@@ -62,10 +62,15 @@ class NotionWrapper:
 
     def _fetch_db_schema(self, database_id):
         """
-        DBのスキーマ情報を取得し、プロパティ名（Date, Title, Relation）を特定します。
+        DBのスキーマ情報を取得し、プロパティ名（Date, Title, Relation, Status）を特定します。
         """
         # Screenshot defaults
-        schema = {"title": "名前", "date": "実施予定日", "relation": "プロジェクト"}
+        schema = {
+            "title": "名前",
+            "date": "実施予定日",
+            "relation": "プロジェクト",
+            "status": "ステータス"
+        }
         
         # Requests fallback for robustness
         url = f"https://api.notion.com/v1/databases/{database_id}"
@@ -85,15 +90,20 @@ class NotionWrapper:
                 titles = [k for k, v in properties.items() if v["type"] == "title"]
                 dates = [k for k, v in properties.items() if v["type"] == "date"]
                 relations = [k for k, v in properties.items() if v["type"] == "relation"]
+                statuses = [k for k, v in properties.items() if v["type"] in ["status", "select"]]
                 
                 if titles: schema["title"] = titles[0]
                 if dates: schema["date"] = dates[0]
                 
                 # Check for "Project" or "プロジェクト" specifically in relations
-                # otherwise take the first relation found
                 if relations:
                     target_rel = next((r for r in relations if r in ["プロジェクト", "Project", "project"]), relations[0])
                     schema["relation"] = target_rel
+                
+                # Check for "Status" or "ステータス"
+                if statuses:
+                    target_status = next((s for s in statuses if s in ["ステータス", "Status", "status"]), statuses[0])
+                    schema["status"] = target_status
                     
             else:
                 pass # Fail silently and use defaults
@@ -152,6 +162,58 @@ class NotionWrapper:
             return True
         except Exception as e:
             st.error(f"Error adding task: {e}")
+            return False
+
+    def update_task_status(self, page_id: str, new_status: str):
+        """
+        タスクのステータスを更新します。
+        """
+        schema = self._fetch_db_schema(self.database_id)
+        prop_status = schema["status"]
+        
+        # ステータスプロパティの型を確認するために一度DB情報を取得してもいいが、
+        # ここでは簡易的にstatus/select両対応できるように試みるか、
+        # あるいは _fetch_db_schema で型も保存しておくとベター。
+        # 今回は、汎用的に使える 'status' or 'select' の update payload を構築する。
+        # NOTE: Notion API では Statusプロパティの更新は `{"status": {"name": "Done"}}` 
+        # Selectプロパティの更新は `{"select": {"name": "Done"}}` となる。
+        # 型がわからないと少し厄介だが、とりあえず `status` として送ってみて、だめなら... というのは危ない。
+        # 簡易実装として、プロパティ名をキーにして、中身は {"name": new_status} を送る方法だと
+        # typeを指定しなくてもよいショートカットがあるか？ -> ない。型を指定する必要がある。
+        
+        # 正攻法: プロパティの型を取得する
+        # パフォーマンス向上のため、キャッシュするか、都度取得するか。
+        # ここでは安全のために都度チェック（本来はクラスメンバに保持すべき）
+        prop_type = "status" # default
+        
+        url = f"https://api.notion.com/v1/databases/{self.database_id}"
+        headers = {
+            "Authorization": f"Bearer {self.token}",
+            "Notion-Version": "2022-06-28",
+            "Content-Type": "application/json"
+        }
+        try:
+            resp = requests.get(url, headers=headers)
+            if resp.status_code == 200:
+                props = resp.json().get("properties", {})
+                if prop_status in props:
+                    prop_type = props[prop_status]["type"]
+        except:
+            pass
+            
+        properties = {
+            prop_status: {
+                prop_type: {
+                    "name": new_status
+                }
+            }
+        }
+        
+        try:
+            self.client.pages.update(page_id=page_id, properties=properties)
+            return True
+        except Exception as e:
+            st.error(f"Error updating status: {e}")
             return False
 
     def _query_database(self, database_id, sorts=None, page_size=100):
@@ -256,6 +318,7 @@ class NotionWrapper:
             prop_title = schema["title"]
             prop_date = schema["date"]
             prop_relation = schema["relation"]
+            prop_status = schema["status"]
 
             response = self._query_database(
                 database_id=self.database_id,
@@ -292,16 +355,27 @@ class NotionWrapper:
                         return project_map[p_id]
                     return "Unknown Project"
 
+                def get_status(prop):
+                    # Status or Select
+                    t = prop.get("type")
+                    if t == "status":
+                        return prop.get("status", {}).get("name")
+                    elif t == "select":
+                        return prop.get("select", {}).get("name") if prop.get("select") else None
+                    return None
+
                 # データ抽出
                 item = {
+                    "id": page["id"],
                     "Task": get_title(props.get(prop_title, {})),
                     "Date": get_date(props.get(prop_date, {})),
-                    "Project": get_relation_name(props.get(prop_relation, {}))
+                    "Project": get_relation_name(props.get(prop_relation, {})),
+                    "Status": get_status(props.get(prop_status, {}))
                 }
                 data.append(item)
             
             if not data:
-                return pd.DataFrame(columns=["Date", "Task", "Project"])
+                return pd.DataFrame(columns=["id", "Date", "Task", "Project", "Status"])
 
             df = pd.DataFrame(data)
             return df
