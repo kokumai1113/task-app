@@ -102,6 +102,26 @@ except Exception as e:
     st.warning(f"Error: {e}")
     is_connected = False
 
+
+# 共通データの読み込み (プロジェクト一覧)
+project_dict = {}
+project_names = []
+
+if is_connected:
+    with st.spinner("Loading projects..."):
+        projects = wrapper.get_projects()
+    
+    # 名前とIDの辞書を作成 (ID -> Name for mapping, Name -> ID for selection)
+    # Project selection uses Name -> ID
+    # Task display uses ID -> Name
+    project_dict_for_select = {p["name"]: p["id"] for p in projects} # Name -> ID
+    project_map_for_display = {p["id"]: p["name"] for p in projects} # ID -> Name
+    
+    project_names = ["(No Project)"] + list(project_dict_for_select.keys())
+else:
+    project_dict_for_select = {}
+    project_map_for_display = {}
+
 # タブの作成
 tab1, tab2 = st.tabs(["📝 Record", "📅 Daily Tasks"])
 
@@ -109,21 +129,6 @@ tab1, tab2 = st.tabs(["📝 Record", "📅 Daily Tasks"])
 with tab1:
     st.header("Add New Task")
     
-    # プロジェクトリストの取得
-    if is_connected:
-        # キャッシュ等の仕組みがないため、タブ切り替えごとに走る可能性があるが、
-        # Streamlitの動作的にはScript全体の再実行なので、
-        # ここではシンプルにする。必要なら st.cache_data を使う。
-        with st.spinner("Loading projects..."):
-            projects = wrapper.get_projects()
-        
-        # 名前とIDの辞書を作成
-        project_dict = {p["name"]: p["id"] for p in projects}
-        project_names = ["(No Project)"] + list(project_dict.keys())
-    else:
-        project_names = []
-        project_dict = {}
-
     is_date_enabled = st.checkbox("Set Date", value=False)
 
     with st.form("task_form", clear_on_submit=True):
@@ -147,7 +152,7 @@ with tab1:
             elif not name:
                 st.warning("タスク名を入力してください。")
             else:
-                project_id = project_dict.get(selected_project_name)
+                project_id = project_dict_for_select.get(selected_project_name)
                 with st.spinner("Saving to Notion..."):
                     success = wrapper.add_task(
                         name=name,
@@ -169,7 +174,9 @@ with tab2:
         # Load tasks
         with st.spinner("Loading tasks..."):
             # Fetch a good number of tasks to ensure we cover recent ones
-            df = wrapper.get_tasks(page_size=100)
+            # Pass project_map so it can resolve project IDs to names
+            df = wrapper.get_tasks(page_size=100, project_map=project_map_for_display)
+
 
         if df.empty:
             st.info("No tasks found.")
