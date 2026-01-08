@@ -33,11 +33,22 @@ def local_css():
     /* カード風デザインのコンテナクラス */
     .stCard {
         background-color: #262730;
-        padding: 1.5rem;
-        border-radius: 12px;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        margin-bottom: 1rem;
+        padding: 1rem;
+        border-radius: 8px;
+        margin-bottom: 0.5rem;
         border: 1px solid #41424C;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+    }
+
+    .task-title {
+        font-weight: bold;
+        font-size: 1.1em;
+        margin-bottom: 0.2rem;
+    }
+
+    .task-meta {
+        color: #aaa;
+        font-size: 0.9em;
     }
 
     /* ボタンのスタイル */
@@ -61,11 +72,19 @@ def local_css():
         margin-bottom: 0.5rem;
     }
     
-    /* 履歴テーブルのヘッダー */
-    th {
-        color: #00C6FF !important;
+    /* タブのスタイル調整（オプション） */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px;
     }
-
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: transparent;
+        border-radius: 4px 4px 0px 0px;
+        gap: 1px;
+        padding-top: 10px;
+        padding-bottom: 10px;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -83,52 +102,154 @@ except Exception as e:
     st.warning(f"Error: {e}")
     is_connected = False
 
-# --- タスク追加 ---
-st.header("Add New Task")
+# タブの作成
+tab1, tab2 = st.tabs(["📝 Record", "📅 Daily Tasks"])
 
-# プロジェクトリストの取得
-if is_connected:
-    with st.spinner("Loading projects..."):
-        projects = wrapper.get_projects()
+# --- Tab 1: Record (Add Task) ---
+with tab1:
+    st.header("Add New Task")
     
-    # 名前とIDの辞書を作成
-    project_dict = {p["name"]: p["id"] for p in projects}
-    project_names = ["(No Project)"] + list(project_dict.keys())
-else:
-    project_names = []
-    project_dict = {}
+    # プロジェクトリストの取得
+    if is_connected:
+        # キャッシュ等の仕組みがないため、タブ切り替えごとに走る可能性があるが、
+        # Streamlitの動作的にはScript全体の再実行なので、
+        # ここではシンプルにする。必要なら st.cache_data を使う。
+        with st.spinner("Loading projects..."):
+            projects = wrapper.get_projects()
+        
+        # 名前とIDの辞書を作成
+        project_dict = {p["name"]: p["id"] for p in projects}
+        project_names = ["(No Project)"] + list(project_dict.keys())
+    else:
+        project_names = []
+        project_dict = {}
 
-is_date_enabled = st.checkbox("Set Date", value=False)
+    is_date_enabled = st.checkbox("Set Date", value=False)
 
-with st.form("task_form", clear_on_submit=True):
-    name = st.text_input("Task Name", placeholder="Enter task name...")
+    with st.form("task_form", clear_on_submit=True):
+        name = st.text_input("Task Name", placeholder="Enter task name...")
+        
+        date = None
+        if is_date_enabled:
+            date = st.date_input("Date", datetime.now())
+        
+        selected_project_name = None
+        if project_names:
+            selected_project_name = st.selectbox("Project", project_names)
+        elif is_connected:
+            st.warning("No projects found. Please check PROJECT_DB_ID.")
+        
+        submitted = st.form_submit_button("Save Task")
+        
+        if submitted:
+            if not is_connected:
+                st.error("Notionに接続できません。")
+            elif not name:
+                st.warning("タスク名を入力してください。")
+            else:
+                project_id = project_dict.get(selected_project_name)
+                with st.spinner("Saving to Notion..."):
+                    success = wrapper.add_task(
+                        name=name,
+                        date=date,
+                        project_id=project_id
+                    )
+                    if success:
+                        st.success(f"Saved: {name} ({selected_project_name})")
+                    else:
+                        st.error("保存に失敗しました。ログを確認してください。")
+
+# --- Tab 2: Daily Tasks ---
+with tab2:
+    st.header("Daily Tasks")
     
-    date = None
-    if is_date_enabled:
-        date = st.date_input("Date", datetime.now())
-    
-    selected_project_name = None
-    if project_names:
-        selected_project_name = st.selectbox("Project", project_names)
-    elif is_connected:
-        st.warning("No projects found. Please check PROJECT_DB_ID.")
-    
-    submitted = st.form_submit_button("Save Task")
-    
-    if submitted:
-        if not is_connected:
-            st.error("Notionに接続できません。")
-        elif not name:
-            st.warning("タスク名を入力してください。")
+    if not is_connected:
+        st.error("Notion Connection Required")
+    else:
+        # Load tasks
+        with st.spinner("Loading tasks..."):
+            # Fetch a good number of tasks to ensure we cover recent ones
+            df = wrapper.get_tasks(page_size=100)
+
+        if df.empty:
+            st.info("No tasks found.")
         else:
-            project_id = project_dict.get(selected_project_name)
-            with st.spinner("Saving to Notion..."):
-                success = wrapper.add_task(
-                    name=name,
-                    date=date,
-                    project_id=project_id
-                )
-                if success:
-                    st.success(f"Saved: {name} ({selected_project_name})")
-                else:
-                    st.error("保存に失敗しました。ログを確認してください。")
+            today_str = datetime.now().strftime("%Y-%m-%d")
+            
+            # Filter Logic
+            # 1. Not Started (未着手) & Date == Today
+            # 2. In Progress (進行中) (Any date)
+            
+            not_started_statuses = ["Not started", "Not Started", "未着手", "To Do", "To-do"]
+            in_progress_statuses = ["In progress", "In Progress", "進行中", "Doing"]
+            
+            def is_target_task(row):
+                status = str(row["Status"])
+                date = str(row["Date"])
+                
+                is_not_started = status in not_started_statuses
+                is_in_progress = status in in_progress_statuses
+                is_today = date == today_str
+                
+                if is_not_started and is_today:
+                    return True
+                if is_in_progress:
+                    return True
+                return False
+
+            # Apply filter
+            target_tasks = df[df.apply(is_target_task, axis=1)]
+
+            # Sort: In Progress first, then Not Started
+            def sort_key(row):
+                status = str(row["Status"])
+                if status in in_progress_statuses:
+                    return 0 # Top priority
+                return 1
+
+            if not target_tasks.empty:
+                target_tasks["sort_key"] = target_tasks.apply(sort_key, axis=1)
+                target_tasks = target_tasks.sort_values(by=["sort_key", "Date"])
+                
+                st.write(f"Incomplete tasks for today: {len(target_tasks)}")
+                
+                # Display tasks
+                for index, row in target_tasks.iterrows():
+                    with st.container():
+                        st.markdown(f"""
+                        <div class="stCard">
+                            <div class="task-title">{row['Task']}</div>
+                            <div class="task-meta">📅 {row['Date']} | 📂 {row['Project']}</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        # Status Updater
+                        current_status = row['Status']
+                        
+                        # Dynamic options based on current status to ensure it's in the list
+                        options = [current_status] 
+                        # Add common options if not present
+                        for s in ["未着手", "進行中", "完了"]:
+                            if s not in options:
+                                options.append(s)
+                        
+                        # Unique key for widgets in loop
+                        new_status = st.selectbox(
+                            "Status",
+                            options=options,
+                            index=0,
+                            key=f"status_{row['id']}",
+                            label_visibility="collapsed"
+                        )
+                        
+                        if new_status != current_status:
+                            with st.spinner("Updating status..."):
+                                if wrapper.update_task_status(row['id'], new_status):
+                                    st.success("Updated!")
+                                    st.rerun()
+                                else:
+                                    st.error("Failed to update.")
+                        
+                        st.divider()
+            else:
+                st.info("No tasks for today! 🎉")
