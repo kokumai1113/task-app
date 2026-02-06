@@ -184,8 +184,8 @@ with tab2:
             today_str = datetime.now().strftime("%Y-%m-%d")
             
             # Filter Logic
-            # 1. Not Started (未着手) & Date == Today
-            # 2. In Progress (進行中) (Any date)
+            # 1. Date == Today (any status)
+            # 2. Date < Today AND Status is (未着手 or 進行中)
             
             not_started_statuses = ["Not started", "Not Started", "未着手", "To Do", "To-do"]
             in_progress_statuses = ["In progress", "In Progress", "進行中", "Doing"]
@@ -197,10 +197,13 @@ with tab2:
                 is_not_started = status in not_started_statuses
                 is_in_progress = status in in_progress_statuses
                 is_today = date == today_str
+                is_before_today = date != "-" and date < today_str
                 
-                if is_not_started and is_today:
+                # 条件1: 開始日が今日と一致
+                if is_today:
                     return True
-                if is_in_progress:
+                # 条件2: 開始日が今日より前 AND ステータスが未着手/進行中
+                if is_before_today and (is_not_started or is_in_progress):
                     return True
                 return False
 
