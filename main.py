@@ -194,10 +194,14 @@ with tab2:
                 status = str(row["Status"])
                 date = str(row["Date"])
                 
+                # 日付がnullの場合は除外
+                if date == "-" or date == "":
+                    return False
+                
                 is_not_started = status in not_started_statuses
                 is_in_progress = status in in_progress_statuses
                 is_today = date == today_str
-                is_before_today = date != "-" and date < today_str
+                is_before_today = date < today_str
                 
                 # 条件1: 開始日が今日と一致
                 if is_today:
