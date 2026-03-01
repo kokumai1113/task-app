@@ -1,23 +1,25 @@
-name: Streamlit Keep Alive
+name: Selenium Wake Up
 
 on:
   schedule:
-    # 毎日 日本時間の深夜2時（UTC 17:00）に実行
-    - cron: '0 17 * * *'
-  workflow_dispatch: # 手動でもボタンから実行できます
+    - cron: '0 5,17 * * *' # 日本時間 14時と深夜2時
+  workflow_dispatch:
 
 jobs:
-  build:
+  wake-up:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Update keep_alive.txt
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python_version: '3.9'
+
+      - name: Install dependencies
         run: |
-          date > keep_alive.txt
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add keep_alive.txt
-          git commit -m "Keep alive: $(date)"
-          git push
+          pip install selenium webdriver-manager
+
+      - name: Run Wake Up Script
+        run: python wakeup.py
